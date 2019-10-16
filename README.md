@@ -1,18 +1,20 @@
 
-Parse a list of URLs with axe-core/cli, aggregate the results of the a11y analysis
+# Why?
+
+Parse a list of URLs with axe-core/cli, aggregate the results of the a11y analysis, generate a spreadsheet, conquer the world.
 
 This is a quick, throwaway project (:
 
 
 ## Requirements
 
-Run 
+Install with
+
+```
 npm install selenium-webdriver --no-save
 npm install chromedriver --chromedriver-force-download
 npm install
-
-## Packages used
-npm install axe-webdriverjs
+```
 
 ## References 
 
