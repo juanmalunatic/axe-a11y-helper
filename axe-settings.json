@@ -1,0 +1,11 @@
+{
+  "rules": [
+    {
+      "id": "Minimum Validation Level",
+      "tags": [
+        "wcag2a",
+        "wcag2aa"
+      ]
+    }
+  ]
+}

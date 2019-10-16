@@ -1,0 +1,18 @@
+{
+  "name": "axe-a11y-helper",
+  "version": "1.0.0",
+  "description": "Parse a list of URLs with axe-core/cli, aggregate the results of the a11y analysis",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Juan Manuel Luna López",
+  "license": "MIT",
+  "dependencies": {
+    "axe-webdriverjs": "^2.3.0",
+    "chromedriver": "^77.0.0",
+    "moment": "^2.24.0",
+    "selenium-webdriver": "^4.0.0-alpha.5"
+  }
+}
