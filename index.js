@@ -42,11 +42,10 @@ const startProcess = async () => {
 
   for (const url of urlList) {
     await analyzePage(url);
-    
+
     if (index === listEnd) {
       driver.quit();
       handleOutput();
-      console.dir( resultsTotal, {depth: 1});
     }
     index++;
   }
@@ -102,7 +101,7 @@ const writeExcel = (rows, filename) => {
 
   // Temporarily write from memory. Use streams for large files.
   workbook.xlsx
-    .writeFile(filename)
+    .writeFile('./output/' + filename + ".xlsx")
     .then(function () {
       console.log("Done writing XLSX");
     });
@@ -112,48 +111,125 @@ const writeExcel = (rows, filename) => {
 
 const handleOutput = () => {
   // Generate Json
-  // writeRawJson();
+  writeRawJson();
 
   // Generate excel
   let rows = fmtJsonAsRows(resultsTotal);
-  // writeExcel(rowsArray, filename);
+  writeExcel(rows, 'test');
 }
 
 const fmtJsonAsRows = (rawJson) => {
 
   let violationsAll = [];
+  let reportMode = "detailed"; // overview | detailed
 
   rawJson.forEach(website => {
-    violationsSite = [];
-    violationsSite.push(
-      mapViolations2Rows(website['violations'], website['url'])
-    )
-    violationsAll.push(violationsSite);
+    // returns [ [col1, col2, col3], [col1, col2, col3] ]
+    let violationsRows = mapViolations2Rows(
+      reportMode,
+      website['violations'],
+      website['url']
+    );
+
+    violationsAll = violationsAll.concat(violationsRows);
   });
 
-  // We're only interested on violations atm
-  // console.dir(violationsAll, {depth: null});
+  let columnNames = [];
+  switch (reportMode) {
+    case "detailed":
+      columnNames = ['Section', 'Error ID', 'Impact', 'Occurrences', 'Description', 'Target', 'HTML'];
+      break;
+    case "overview":
+      columnNames = ['Section', 'Error ID', 'Impact', 'Occurrences', 'Description'];
+      break;
+  }
+
+  violationsAll.unshift(columnNames);
+  console.dir(violationsAll, { depth: null });
+
+  return violationsAll;
+
 }
 
-const mapViolations2Rows = (axeViolations, urlSite) => {
+const mapViolations2Rows = (reportMode, axeViolations, urlSite) => {
+
+  let rows = [];
+  if
+    (reportMode == "overview") {
+    rows = fmtRowsOverview(axeViolations, urlSite);
+  } else if
+    (reportMode == "detailed") {
+    rows = fmtRowsDetailed(axeViolations, urlSite);
+  }
+
+  //console.log(rows);
+
+  return rows;
+}
+
+const fmtRowsOverview = (axeViolations, urlSite) => {
+
+  let rows = [];
+
+  axeViolations.forEach((axeItem) => {
+    let row = [
+      urlSite,                      // Section
+      axeItem['help'],              // Error ID
+      mapImpact(axeItem['impact']), // Impact
+      axeItem['nodes'].length,      // Occurrences
+      axeItem['description'],       // Description
+    ];
+    rows.push(row);
+  });
+
+  return rows;
+}
+
+
+const fmtRowsDetailed = (axeViolations, urlSite) => {
 
   let rows = [];
 
   axeViolations.forEach((axeItem) => {
 
-    // TO-DO node info
-
-    let row = [
-      urlSite,                 // Section
-      axeItem['help'],         // Error ID
-      axeItem['impact'],       // Impact
-      axeItem['nodes'].length, // Occurrences
-      axeItem['description'],  // Description
+    // Parent format
+    let rowTpl = [
+      urlSite,                      // Section
+      axeItem['help'],              // Error ID
+      mapImpact(axeItem['impact']), // Impact
+      axeItem['nodes'].length,      // Occurrences
+      axeItem['description'],       // Description
     ];
 
-    rows.push(row);
+    axeItem['nodes'].forEach((axeItemNode) => {
+      let row = rowTpl.concat(
+        axeItemNode['target'], // Target
+        axeItemNode['html'],   // HTML
+      );
+      rows.push(row);
+    });
 
-  })
+  });
 
   return rows;
+}
+
+// To make impact sortable
+const mapImpact = (impactStr) => {
+  let returnStr = '';
+  switch (impactStr) {
+    case "minor":
+      returnStr = "1 - Minor";
+      break;
+    case "moderate":
+      returnStr = "2 - Moderate";
+      break;
+    case "serious":
+      returnStr = "3 - Serious";
+      break;
+    case "critical":
+      returnStr = "4 - Critical";
+      break;
+  }
+  return returnStr;
 }
