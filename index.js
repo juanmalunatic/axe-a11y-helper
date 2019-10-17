@@ -8,7 +8,7 @@ const moment = require('moment');
 
 // I'm using a global object to store results.
 // If necessary, shame me into implementing a better pattern.
-let resultsTotal = [];
+let gResultsTotal = [];
 
 const driver = new WebDriver.Builder()
   .forBrowser('chrome')
@@ -24,11 +24,11 @@ const readJSON = (filename) => {
 
 // Read config and URLs from disk
 const axeConfig = readJSON('./axe-settings.json');
-const urlList = readJSON('./url-list.json');
+const crawlList = readJSON('./crawl-list.json');
 
 // Kick-off of main process
 
-const startProcess = async () => {
+const startProcess = async (crawlList) => {
 
   // TO-DO fix this (axeConfig is not being correctly parsed)
   await axebuilder.configure(axeConfig);
@@ -37,11 +37,18 @@ const startProcess = async () => {
   axebuilder.withTags(['wcag2a', 'wcag2aa', 'section508', 'best-practice']);
 
   // Iterate through URLs
-  const listEnd = urlList.length - 1;
+  const urlNames = getUrlNames(crawlList);
+  const urlLinks = getUrlLinks(crawlList);
+  
+  const listEnd = urlLinks.length - 1;
   let index = 0;
 
-  for (const url of urlList) {
-    await analyzePage(url);
+  //for .. of ensures sync iteration (instead of .forEach)
+  for (const pageUrl of urlLinks) { 
+
+    let pageName = urlNames[index];
+
+    await analyzePage(pageUrl, pageName);
 
     if (index === listEnd) {
       driver.quit();
@@ -50,37 +57,58 @@ const startProcess = async () => {
     index++;
   }
 }
-startProcess();
+
+startProcess(crawlList);
+
+// RELOCATE
+//const urlLinks = getUrlLinks(crawlList);
+//const urlNames = getUrlNames(crawlList);
+
+const getUrlLinks = (crawlList) => {
+  let urlLinks = [];
+  crawlList.forEach( (site) => urlLinks.push(site.url) );
+  return urlLinks;
+}
+const getUrlNames = (crawlList) => {
+  let urlNames = [];
+  crawlList.forEach( (site) => urlNames.push(site.name) );
+  return urlNames;
+}
 
 
 //TO-DO compare output of a single page w/ axe-core extension
 
-const analyzePage = async (url) => {
+const analyzePage = async (url, name) => {
   await driver
     .get(url)
-    .then(() => handleDriverGet(url));
+    .then(() => handleDriverGet(url, name));
   return true;
 };
 
-const handleDriverGet = async (url) => {
+const handleDriverGet = async (url, name) => {
   await axebuilder.analyze((err, results) => {
-    return handleAnalysis(err, results, url);
+    return handleAnalysis(err, results, url, name);
   });
   return true;
 }
 
-const handleAnalysis = (err, results, url) => {
+const handleAnalysis = (err, results, url, name) => {
   if (err) {
     throw err;
   }
-  resultsTotal.push(results);
+  
+  // We add custom keys to the results (not native to axe)
+  results['urlSectionName'] = name;
+
+  // Push results to the global object
+  gResultsTotal.push(results);
   return true;
 }
 
 const writeRawJson = () => {
 
   const date = moment().format("YYYY-MM-DD__HH-mm-ss");
-  const outputJSON = JSON.stringify(resultsTotal, null, 2);
+  const outputJSON = JSON.stringify(gResultsTotal, null, 2);
 
   fs.writeFileSync(`./output/${date}.json`, outputJSON);
 
@@ -114,7 +142,7 @@ const handleOutput = () => {
   writeRawJson();
 
   // Generate excel
-  let rows = fmtJsonAsRows(resultsTotal);
+  let rows = fmtJsonAsRows(gResultsTotal);
   writeExcel(rows, 'test');
 }
 
@@ -128,7 +156,8 @@ const fmtJsonAsRows = (rawJson) => {
     let violationsRows = mapViolations2Rows(
       reportMode,
       website['violations'],
-      website['url']
+      website['url'],
+      website['urlSectionName'], // added manually
     );
 
     violationsAll = violationsAll.concat(violationsRows);
@@ -137,29 +166,29 @@ const fmtJsonAsRows = (rawJson) => {
   let columnNames = [];
   switch (reportMode) {
     case "detailed":
-      columnNames = ['Section', 'Error ID', 'Impact', 'Occurrences', 'Description', 'Target', 'HTML'];
+      columnNames = ['Section', 'URL', 'Error ID', 'Impact', 'Occurrences', 'Description', 'Target', 'HTML'];
       break;
     case "overview":
-      columnNames = ['Section', 'Error ID', 'Impact', 'Occurrences', 'Description'];
+      columnNames = ['Section', 'URL', 'Error ID', 'Impact', 'Occurrences', 'Description'];
       break;
   }
 
   violationsAll.unshift(columnNames);
-  console.dir(violationsAll, { depth: null });
+  //console.dir(violationsAll, { depth: null });
 
   return violationsAll;
 
 }
 
-const mapViolations2Rows = (reportMode, axeViolations, urlSite) => {
+const mapViolations2Rows = (reportMode, axeViolations, urlSite, urlName) => {
 
   let rows = [];
   if
     (reportMode == "overview") {
-    rows = fmtRowsOverview(axeViolations, urlSite);
+    rows = fmtRowsOverview(axeViolations, urlSite, urlName);
   } else if
     (reportMode == "detailed") {
-    rows = fmtRowsDetailed(axeViolations, urlSite);
+    rows = fmtRowsDetailed(axeViolations, urlSite, urlName);
   }
 
   //console.log(rows);
@@ -167,13 +196,14 @@ const mapViolations2Rows = (reportMode, axeViolations, urlSite) => {
   return rows;
 }
 
-const fmtRowsOverview = (axeViolations, urlSite) => {
+const fmtRowsOverview = (axeViolations, urlLink, urlName) => {
 
   let rows = [];
 
   axeViolations.forEach((axeItem) => {
     let row = [
-      urlSite,                      // Section
+      urlName,                      // Section
+      urlLink,                      // URL
       axeItem['help'],              // Error ID
       mapImpact(axeItem['impact']), // Impact
       axeItem['nodes'].length,      // Occurrences
@@ -186,7 +216,7 @@ const fmtRowsOverview = (axeViolations, urlSite) => {
 }
 
 
-const fmtRowsDetailed = (axeViolations, urlSite) => {
+const fmtRowsDetailed = (axeViolations, urlLink, urlName) => {
 
   let rows = [];
 
@@ -194,7 +224,8 @@ const fmtRowsDetailed = (axeViolations, urlSite) => {
 
     // Parent format
     let rowTpl = [
-      urlSite,                      // Section
+      urlName,                      // Section
+      urlLink,                      // URL
       axeItem['help'],              // Error ID
       mapImpact(axeItem['impact']), // Impact
       axeItem['nodes'].length,      // Occurrences
